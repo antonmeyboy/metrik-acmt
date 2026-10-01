@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="referrer" content="no-referrer">
   <title>METRIK - ACMT Fast Review Dashboard</title>
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -80,6 +81,18 @@
             <span>Kontak WA</span>
           </button>
           <button 
+            @click="showBookmarkletModal = true"
+            class="text-amber-300 hover:bg-[#1a3360] px-3 py-1.5 rounded-lg flex items-center space-x-1.5 transition font-bold border border-amber-400/40 bg-amber-400/10">
+            <i data-lucide="zap" class="w-3.5 h-3.5"></i>
+            <span>Sinkron ACMT (1-Klik)</span>
+          </button>
+          <button 
+            @click="showHelpModal = true"
+            class="text-sky-300 hover:bg-[#1a3360] px-3 py-1.5 rounded-lg flex items-center space-x-1.5 transition">
+            <i data-lucide="help-circle" class="w-3.5 h-3.5"></i>
+            <span>Panduan Foto</span>
+          </button>
+          <button 
             @click="showConfigModal = true"
             class="text-slate-200 hover:bg-[#1a3360] px-3.5 py-1.5 rounded-lg flex items-center space-x-2 transition"
             :class="{'text-amber-300': !config.hasCookie && !config.simulatedMode}">
@@ -131,9 +144,9 @@
             
             <div class="flex items-center space-x-2">
               <button 
-                @click="parseAndLoadInput" 
-                :disabled="!rawPasteInput.trim()"
-                class="bg-sky-500 hover:bg-sky-600 disabled:bg-slate-300 text-white font-bold text-xs px-5 py-2.5 rounded-lg shadow-sm flex items-center justify-center space-x-2 transition whitespace-nowrap h-full">
+                @click="handleTarikFotoClick" 
+                :disabled="!rawPasteInput.trim() && items.length === 0"
+                class="bg-sky-600 hover:bg-sky-700 disabled:bg-slate-300 text-white font-bold text-xs px-5 py-2.5 rounded-lg shadow-sm flex items-center justify-center space-x-2 transition whitespace-nowrap h-full">
                 <i data-lucide="download-cloud" class="w-4 h-4"></i>
                 <span>Tarik Foto (ACMT)</span>
               </button>
@@ -157,13 +170,13 @@
               <div class="flex items-center space-x-1 bg-slate-100 p-0.5 rounded-lg border border-slate-200">
                 <span class="text-slate-500 px-1 font-semibold text-[10px]">Sumber Foto:</span>
                 <button 
-                  @click="config.imageSourceMode = 'direct'"
+                  @click="config.imageSourceMode = 'direct'; retryAllImages()"
                   :class="config.imageSourceMode === 'direct' ? 'bg-sky-600 text-white shadow-xs font-bold' : 'text-slate-600 hover:bg-slate-200'"
                   class="px-2 py-0.5 rounded text-[10px] transition flex items-center space-x-1">
                   <span>🌐 Langsung dari Browser</span>
                 </button>
                 <button 
-                  @click="config.imageSourceMode = 'proxy'"
+                  @click="config.imageSourceMode = 'proxy'; retryAllImages()"
                   :class="config.imageSourceMode === 'proxy' ? 'bg-sky-600 text-white shadow-xs font-bold' : 'text-slate-600 hover:bg-slate-200'"
                   class="px-2 py-0.5 rounded text-[10px] transition flex items-center space-x-1">
                   <span>🖥️ Server Proxy</span>
@@ -179,7 +192,27 @@
           </div>
         </div>
 
-        <!-- Batch Download Progress Bar (When running) -->
+        <!-- Notification Banner if photos have error -->
+        <div v-if="Object.keys(imageErrors).length > 0" class="bg-amber-50 border border-amber-300 rounded-xl p-3 flex items-center justify-between text-xs text-amber-900 shadow-xs">
+          <div class="flex items-center space-x-2.5">
+            <span class="text-lg">💡</span>
+            <div>
+              <strong>Ada {{ Object.keys(imageErrors).length }} foto belum muncul di kotak:</strong>
+              <span class="text-amber-800 ml-1">Pastikan sudah login di tab ACMT, atau sinkronkan sesi login via tombol <strong>⭐ Sinkron ACMT (1-Klik)</strong> di atas.</span>
+            </div>
+          </div>
+          <div class="flex items-center space-x-2">
+            <button @click="retryAllImages" class="bg-amber-600 hover:bg-amber-700 text-white font-bold px-3 py-1 rounded text-xs transition flex items-center space-x-1">
+              <i data-lucide="refresh-cw" class="w-3 h-3"></i>
+              <span>Coba Tarik Ulang Semua</span>
+            </button>
+            <button @click="showBookmarkletModal = true" class="bg-white border border-amber-400 text-amber-800 font-bold px-2.5 py-1 rounded text-xs hover:bg-amber-100">
+              Sinkron Sesi
+            </button>
+          </div>
+        </div>
+
+        <!-- Batch Download Progress Bar (When running in Proxy mode) -->
         <div v-if="batchStatus.isRunning" class="bg-sky-50 border border-sky-200 rounded-xl p-3 shadow-sm flex flex-col space-y-2">
           <div class="flex items-center justify-between text-xs font-semibold text-sky-900">
             <div class="flex items-center space-x-2">
@@ -239,17 +272,25 @@
               <span>Export CSV</span>
             </button>
             <button 
+              @click="retryAllImages" 
+              :disabled="items.length === 0"
+              class="bg-sky-50 hover:bg-sky-100 disabled:opacity-50 border border-sky-300 text-sky-800 text-xs font-bold px-3.5 py-2 rounded-lg shadow-sm flex items-center space-x-1.5 transition">
+              <i data-lucide="refresh-cw" class="w-3.5 h-3.5 text-sky-600"></i>
+              <span>Tarik Ulang Semua Foto</span>
+            </button>
+            <button 
               @click="resetQueue" 
               :disabled="items.length === 0"
               class="bg-white hover:bg-slate-50 disabled:opacity-50 border border-slate-300 text-slate-700 text-xs font-semibold px-3 py-2 rounded-lg shadow-sm flex items-center space-x-1.5 transition">
               <i data-lucide="trash-2" class="w-3.5 h-3.5 text-slate-500"></i>
-              <span>Reset / Bersihkan Antrean</span>
+              <span>Reset Antrean</span>
             </button>
             <button 
               @click="refreshEmptyCache" 
-              class="bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 text-xs font-semibold px-3 py-2 rounded-lg shadow-sm flex items-center space-x-1.5 transition">
-              <i data-lucide="refresh-cw" class="w-3.5 h-3.5 text-sky-600"></i>
-              <span>Refresh Cache Foto Kosong</span>
+              class="bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 text-xs font-semibold px-3 py-2 rounded-lg shadow-sm flex items-center space-x-1.5 transition"
+              title="Bersihkan tanda cache kosong di server">
+              <i data-lucide="database-zap" class="w-3.5 h-3.5 text-slate-500"></i>
+              <span>Reset Cache</span>
             </button>
           </div>
         </div>
@@ -405,21 +446,55 @@
                     :key="month" 
                     class="py-2 px-1 text-center align-middle">
                     <div 
-                      class="w-16 h-20 mx-auto rounded border border-slate-200 bg-slate-100 overflow-hidden relative shadow-xs flex items-center justify-center group">
+                      class="w-16 h-20 mx-auto rounded border border-slate-200 bg-slate-100 overflow-hidden relative shadow-xs flex items-center justify-center group select-none">
+                      
+                      <!-- Photo Image -->
                       <img 
+                        v-if="!imageErrors[getImgKey(item.idpel, month, 'meter')]"
+                        :key="getImgKey(item.idpel, month, 'meter') + '_' + renderVersion"
                         :src="getPhotoUrl(item.idpel, month, 'meter')" 
                         :alt="month" 
                         loading="lazy"
+                        referrerpolicy="no-referrer"
                         class="w-full h-full object-cover thumb-img cursor-pointer"
                         @click="openLightbox(item, month, 'meter')"
-                        @error="handleImageError" />
-                      <div class="absolute inset-0 bg-black/0 group-hover:bg-black/40 flex items-center justify-center space-x-1 transition opacity-0 group-hover:opacity-100 pointer-events-none group-hover:pointer-events-auto">
+                        @error="onImageError(item.idpel, month, 'meter')"
+                        @load="onImageSuccess(item.idpel, month, 'meter')" />
+                      
+                      <!-- Fallback Interactive Card if Failed -->
+                      <div 
+                        v-else 
+                        class="w-full h-full flex flex-col items-center justify-center p-1 bg-slate-50 text-[9px] text-slate-500 leading-tight">
+                        <i data-lucide="image-off" class="w-4 h-4 text-slate-400 mb-0.5"></i>
+                        <span class="font-bold text-[8px] text-slate-600">Gagal Muat</span>
+                        <div class="flex items-center space-x-1 mt-1">
+                          <button 
+                            @click.stop="retryImage(item.idpel, month, 'meter')" 
+                            title="Coba Muat Ulang" 
+                            class="p-0.5 px-1 bg-sky-100 text-sky-700 hover:bg-sky-200 rounded font-bold text-[8px]">
+                            Muat
+                          </button>
+                          <a 
+                            :href="getDirectAcmtUrl(item.idpel, month, 'meter')" 
+                            target="_blank" 
+                            title="Buka Link Foto Asli ACMT di Tab Baru" 
+                            class="p-0.5 px-1 bg-slate-200 text-slate-700 hover:bg-slate-300 rounded font-bold text-[8px]">
+                            Link
+                          </a>
+                        </div>
+                      </div>
+
+                      <!-- Hover Action Controls -->
+                      <div class="absolute inset-0 bg-black/0 group-hover:bg-black/50 flex items-center justify-center space-x-1 transition opacity-0 group-hover:opacity-100 pointer-events-none group-hover:pointer-events-auto">
                         <button @click.stop="openLightbox(item, month, 'meter')" title="Perbesar" class="p-1 rounded bg-black/70 text-white hover:bg-black">
                           <i data-lucide="zoom-in" class="w-3.5 h-3.5"></i>
                         </button>
-                        <a :href="getDirectAcmtUrl(item.idpel, month, 'meter')" target="_blank" @click.stop title="Buka Link Foto Asli ACMT" class="p-1 rounded bg-black/70 text-cyan-300 hover:bg-blue-600 hover:text-white">
+                        <a :href="getDirectAcmtUrl(item.idpel, month, 'meter')" target="_blank" @click.stop title="Buka Link Foto Asli ACMT di Tab Baru" class="p-1 rounded bg-black/70 text-cyan-300 hover:bg-blue-600 hover:text-white">
                           <i data-lucide="external-link" class="w-3.5 h-3.5"></i>
                         </a>
+                        <button @click.stop="retryImage(item.idpel, month, 'meter')" title="Muat Ulang Foto" class="p-1 rounded bg-black/70 text-amber-300 hover:bg-amber-600 hover:text-white">
+                          <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
+                        </button>
                       </div>
                     </div>
                   </td>
@@ -427,21 +502,54 @@
                   <!-- Foto Rumah Column -->
                   <td class="py-2 px-1.5 text-center align-middle bg-emerald-50/20 border-x border-emerald-100/60">
                     <div 
-                      class="w-16 h-20 mx-auto rounded border border-emerald-200 bg-slate-100 overflow-hidden relative shadow-xs flex items-center justify-center group">
+                      class="w-16 h-20 mx-auto rounded border border-emerald-200 bg-slate-100 overflow-hidden relative shadow-xs flex items-center justify-center group select-none">
+                      <!-- Photo Image -->
                       <img 
+                        v-if="!imageErrors[getImgKey(item.idpel, config.targetMonths[0], 'rumah')]"
+                        :key="getImgKey(item.idpel, config.targetMonths[0], 'rumah') + '_' + renderVersion"
                         :src="getPhotoUrl(item.idpel, config.targetMonths[0], 'rumah')" 
                         alt="Foto Rumah" 
                         loading="lazy"
+                        referrerpolicy="no-referrer"
                         class="w-full h-full object-cover thumb-img cursor-pointer"
                         @click="openLightbox(item, config.targetMonths[0], 'rumah')"
-                        @error="handleImageError" />
-                      <div class="absolute inset-0 bg-black/0 group-hover:bg-black/40 flex items-center justify-center space-x-1 transition opacity-0 group-hover:opacity-100 pointer-events-none group-hover:pointer-events-auto">
+                        @error="onImageError(item.idpel, config.targetMonths[0], 'rumah')"
+                        @load="onImageSuccess(item.idpel, config.targetMonths[0], 'rumah')" />
+
+                      <!-- Fallback Interactive Card if Failed -->
+                      <div 
+                        v-else 
+                        class="w-full h-full flex flex-col items-center justify-center p-1 bg-emerald-50/40 text-[9px] text-slate-500 leading-tight">
+                        <i data-lucide="home" class="w-4 h-4 text-emerald-500 mb-0.5"></i>
+                        <span class="font-bold text-[8px] text-slate-600">Gagal Muat</span>
+                        <div class="flex items-center space-x-1 mt-1">
+                          <button 
+                            @click.stop="retryImage(item.idpel, config.targetMonths[0], 'rumah')" 
+                            title="Coba Muat Ulang" 
+                            class="p-0.5 px-1 bg-emerald-100 text-emerald-800 hover:bg-emerald-200 rounded font-bold text-[8px]">
+                            Muat
+                          </button>
+                          <a 
+                            :href="getDirectAcmtUrl(item.idpel, config.targetMonths[0], 'rumah')" 
+                            target="_blank" 
+                            title="Buka Link Foto Asli ACMT di Tab Baru" 
+                            class="p-0.5 px-1 bg-slate-200 text-slate-700 hover:bg-slate-300 rounded font-bold text-[8px]">
+                            Link
+                          </a>
+                        </div>
+                      </div>
+
+                      <!-- Hover Action Controls -->
+                      <div class="absolute inset-0 bg-black/0 group-hover:bg-black/50 flex items-center justify-center space-x-1 transition opacity-0 group-hover:opacity-100 pointer-events-none group-hover:pointer-events-auto">
                         <button @click.stop="openLightbox(item, config.targetMonths[0], 'rumah')" title="Perbesar" class="p-1 rounded bg-black/70 text-white hover:bg-black">
                           <i data-lucide="zoom-in" class="w-3.5 h-3.5"></i>
                         </button>
-                        <a :href="getDirectAcmtUrl(item.idpel, config.targetMonths[0], 'rumah')" target="_blank" @click.stop title="Buka Link Foto Asli ACMT" class="p-1 rounded bg-black/70 text-cyan-300 hover:bg-blue-600 hover:text-white">
+                        <a :href="getDirectAcmtUrl(item.idpel, config.targetMonths[0], 'rumah')" target="_blank" @click.stop title="Buka Link Foto Asli ACMT di Tab Baru" class="p-1 rounded bg-black/70 text-cyan-300 hover:bg-blue-600 hover:text-white">
                           <i data-lucide="external-link" class="w-3.5 h-3.5"></i>
                         </a>
+                        <button @click.stop="retryImage(item.idpel, config.targetMonths[0], 'rumah')" title="Muat Ulang Foto" class="p-1 rounded bg-black/70 text-amber-300 hover:bg-amber-600 hover:text-white">
+                          <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
+                        </button>
                       </div>
                     </div>
                   </td>
@@ -455,7 +563,7 @@
                         :class="item.status === 'sesuai' 
                           ? 'bg-emerald-600 text-white shadow-sm ring-1 ring-emerald-600' 
                           : 'bg-white hover:bg-emerald-50 text-slate-700 border border-slate-300'"
-                        class="px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center space-x-1 transition">
+                        class="px-3 py-1.5 rounded-lg text-xs font-bold flex items-center space-x-1 transition">
                         <span>&check; Sesuai</span>
                       </button>
 
@@ -465,20 +573,19 @@
                         :class="item.status === 'salah' 
                           ? 'bg-rose-600 text-white shadow-sm ring-1 ring-rose-600' 
                           : 'bg-white hover:bg-rose-50 text-slate-700 border border-slate-300'"
-                        class="px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center space-x-1 transition">
+                        class="px-3 py-1.5 rounded-lg text-xs font-bold flex items-center space-x-1 transition">
                         <span>&times; Salah</span>
                       </button>
                     </div>
                   </td>
 
-                  <!-- KETERANGAN / CATATAN -->
-                  <td class="py-2 px-3 align-middle">
-                    <textarea 
+                  <!-- KETERANGAN -->
+                  <td class="py-2.5 px-3">
+                    <input 
                       v-model="item.catatan" 
-                      :ref="'catatan_' + idx"
-                      rows="2" 
-                      placeholder="Catatan..."
-                      class="w-full px-2 py-1 text-xs border border-slate-200 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 resize-none font-sans bg-white"></textarea>
+                      type="text" 
+                      placeholder="Catatan..." 
+                      class="w-full px-2.5 py-1.5 border border-slate-200 rounded text-xs focus:ring-1 focus:ring-blue-500 focus:outline-none bg-slate-50/50 focus:bg-white" />
                   </td>
 
                 </tr>
@@ -489,11 +596,11 @@
 
       </div>
 
-      <!-- View: Riwayat Audit -->
+      <!-- View: Riwayat Hasil Audit -->
       <div v-show="activeTab === 'riwayat'" class="bg-white rounded-xl shadow-sm border border-slate-200 p-5 space-y-4">
         <div class="flex items-center justify-between pb-3 border-b border-slate-100">
           <div>
-            <h2 class="text-base font-bold text-slate-800 flex items-center gap-2">
+            <h2 class="text-base font-bold text-slate-800 flex items-center space-x-2">
               <i data-lucide="archive" class="w-4 h-4 text-blue-600"></i>
               <span>Riwayat Hasil Audit Tersimpan</span>
             </h2>
@@ -548,6 +655,103 @@
 
     </main>
 
+    <!-- Modal: Sinkron Sesi ACMT (1-Klik Bookmarklet) -->
+    <div v-if="showBookmarkletModal" class="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+      <div class="bg-white rounded-2xl shadow-2xl max-w-lg w-full p-6 space-y-4">
+        <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+          <div class="flex items-center space-x-2">
+            <div class="w-8 h-8 rounded-lg bg-amber-100 text-amber-600 flex items-center justify-center font-bold">
+              <i data-lucide="zap" class="w-4 h-4"></i>
+            </div>
+            <div>
+              <h3 class="text-sm font-bold text-slate-800">Sinkronkan Sesi ACMT (1-Klik)</h3>
+              <p class="text-[11px] text-slate-500">Hubungkan sesi login ACMT Anda ke server Railway secara otomatis.</p>
+            </div>
+          </div>
+          <button @click="showBookmarkletModal = false" class="text-slate-400 hover:text-slate-600 text-lg font-bold">&times;</button>
+        </div>
+
+        <div class="space-y-3 text-xs text-slate-700">
+          <div class="p-3.5 bg-amber-50 rounded-xl border border-amber-200 space-y-2.5">
+            <p class="font-bold text-amber-900">Cara Menghubungkan Sesi Login ACMT:</p>
+            <ol class="list-decimal list-inside space-y-2 leading-relaxed text-slate-800 text-[11px]">
+              <li>
+                <strong>Tarik (Drag) tombol biru di bawah ini</strong> ke bilah <em>Bookmark / Favorit</em> browser Anda (tekan <kbd class="bg-white px-1.5 py-0.5 border rounded font-mono font-semibold">Ctrl + Shift + B</kbd> jika bilah bookmark belum tampil):
+                <div class="my-2.5 text-center">
+                  <a 
+                    :href="bookmarkletCode" 
+                    onclick="alert('Jangan klik di sini! Tarik (drag & drop) tombol ini ke baris Bookmark browser Anda.'); return false;"
+                    class="inline-block px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-black rounded-lg shadow-md cursor-grab active:cursor-grabbing text-xs border border-blue-400 tracking-wide">
+                    ⚡ Sinkron Sesi ACMT
+                  </a>
+                </div>
+              </li>
+              <li>Buka tab website <strong>portalapp.iconpln.co.id/acmt</strong> yang sudah Anda login.</li>
+              <li>Saat berada di tab ACMT tersebut, klik bookmark <strong>⚡ Sinkron Sesi ACMT</strong> yang baru saja Anda pasang.</li>
+              <li>Akan muncul popup sukses! Kembali ke aplikasi ini lalu klik <strong>Tarik Foto (ACMT)</strong>.</li>
+            </ol>
+          </div>
+
+          <div class="p-3 bg-slate-50 rounded-xl border border-slate-200 text-[11px] text-slate-600">
+            <strong>Alternatif:</strong> Anda juga bisa membuka tab baru ACMT dan tetap memilih mode <em>🌐 Langsung dari Browser</em>.
+          </div>
+        </div>
+
+        <div class="flex items-center justify-end space-x-2 pt-2 border-t border-slate-100">
+          <button @click="showBookmarkletModal = false" class="px-4 py-2 bg-blue-600 text-white rounded-lg text-xs font-bold hover:bg-blue-700 shadow-sm">
+            Tutup
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal: Panduan Tarik Foto -->
+    <div v-if="showHelpModal" class="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+      <div class="bg-white rounded-2xl shadow-2xl max-w-lg w-full p-6 space-y-4">
+        <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+          <div class="flex items-center space-x-2">
+            <div class="w-8 h-8 rounded-lg bg-sky-100 text-sky-600 flex items-center justify-center font-bold">
+              <i data-lucide="help-circle" class="w-4 h-4"></i>
+            </div>
+            <div>
+              <h3 class="text-sm font-bold text-slate-800">Panduan Mengapa Foto Belum Muncul</h3>
+              <p class="text-[11px] text-slate-500">Penyebab dan solusi agar foto kWh meter ACMT tampil di kotak.</p>
+            </div>
+          </div>
+          <button @click="showHelpModal = false" class="text-slate-400 hover:text-slate-600 text-lg font-bold">&times;</button>
+        </div>
+
+        <div class="space-y-3 text-xs text-slate-700">
+          <div class="p-3 bg-sky-50 rounded-xl border border-sky-200 space-y-1.5">
+            <h4 class="font-bold text-sky-900">1. Pastikan Anda Sudah Login di Portal ACMT</h4>
+            <p class="text-slate-600 leading-relaxed text-[11px]">
+              Foto kWh meter PLN dilindungi login. Buka <a href="https://portalapp.iconpln.co.id/acmt/Ipam.html" target="_blank" class="text-blue-600 underline font-bold">portalapp.iconpln.co.id/acmt/Ipam.html</a> di tab sebelah pada browser yang sama dan pastikan login Anda aktif.
+            </p>
+          </div>
+
+          <div class="p-3 bg-amber-50 rounded-xl border border-amber-200 space-y-1.5">
+            <h4 class="font-bold text-amber-900">2. Izinkan Cookie Lintas-Situs (Third-Party Cookies)</h4>
+            <p class="text-slate-600 leading-relaxed text-[11px]">
+              Browser Chrome / Edge memblokir cookie pihak ketiga secara default. Di address bar browser Anda (di sebelah kiri URL web-production...), klik ikon <strong>Setelan Situs / Mata</strong> ➔ Aktifkan <strong>"Izinkan Cookie Pihak Ketiga"</strong>.
+            </p>
+          </div>
+
+          <div class="p-3 bg-emerald-50 rounded-xl border border-emerald-200 space-y-1.5">
+            <h4 class="font-bold text-emerald-900">3. Tes Buka Link Foto di Tab Baru</h4>
+            <p class="text-slate-600 leading-relaxed text-[11px]">
+              Arahkan kursor ke salah satu kotak foto lalu klik ikon tautan <strong>🔗 Buka Link</strong>. Jika di tab baru foto muncul, berarti login Anda sudah aktif! Klik tombol <strong>"Muat"</strong> pada kotak atau tombol <strong>"Tarik Ulang Semua Foto"</strong> di atas.
+            </p>
+          </div>
+        </div>
+
+        <div class="flex items-center justify-end space-x-2 pt-2 border-t border-slate-100">
+          <button @click="showHelpModal = false" class="px-4 py-2 bg-blue-600 text-white rounded-lg text-xs font-bold hover:bg-blue-700 shadow-sm">
+            Saya Mengerti
+          </button>
+        </div>
+      </div>
+    </div>
+
     <!-- Modal: Pengaturan ACMT & Cookie -->
     <div v-if="showConfigModal" class="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center z-50 p-4">
       <div class="bg-white rounded-2xl shadow-2xl max-w-lg w-full p-6 space-y-4">
@@ -579,11 +783,11 @@
             <div class="space-y-1.5 text-xs">
               <label class="flex items-center space-x-2 cursor-pointer font-medium text-slate-800">
                 <input type="radio" value="direct" v-model="config.imageSourceMode" class="text-sky-600 focus:ring-sky-500">
-                <span>🌐 <strong>Langsung dari Browser (Rekomendasi)</strong> - Foto ditarik langsung ke portal ACMT menggunakan sesi login browser Anda.</span>
+                <span>🌐 <strong>Langsung dari Browser (Rekomendasi)</strong> - Foto ditarik langsung ke portal ACMT menggunakan koneksi & login browser Anda.</span>
               </label>
               <label class="flex items-center space-x-2 cursor-pointer font-medium text-slate-800">
                 <input type="radio" value="proxy" v-model="config.imageSourceMode" class="text-sky-600 focus:ring-sky-500">
-                <span>🖥️ <strong>Server Proxy (Railway)</strong> - Foto ditarik lewat server cloud (wajib isi Cookie di bawah).</span>
+                <span>🖥️ <strong>Server Proxy (Railway)</strong> - Foto ditarik lewat server cloud (wajib isi Cookie di bawah atau gunakan Sinkron 1-Klik).</span>
               </label>
             </div>
           </div>
@@ -611,7 +815,7 @@
               placeholder="Contoh: JSESSIONID=0000abc123...; org.springframework.web.servlet.i18n.CookieLocaleResolver.LOCALE=id"
               class="w-full px-3 py-2 border border-slate-300 rounded-lg font-mono text-[11px] focus:ring-2 focus:ring-blue-500 focus:outline-none"></textarea>
             <p class="text-[10px] text-slate-500 mt-1">
-              Cara ambil: Buka tab Network saat login di ACMT ➔ klik salah satu request ➔ salin isi Header <code>Cookie</code>.
+              Bisa diisi otomatis menggunakan tombol <strong>⭐ Sinkron ACMT (1-Klik)</strong> di atas.
             </p>
           </div>
 

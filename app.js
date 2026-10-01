@@ -7,6 +7,8 @@ createApp({
     const auditorUnit = ref('UID SUMUT');
     const showConfigModal = ref(false);
     const showResetModal = ref(false);
+    const showBookmarkletModal = ref(false);
+    const showHelpModal = ref(false);
 
     // Configuration
     const config = reactive({
@@ -17,7 +19,7 @@ createApp({
       targetMonthsText: '202610, 202609, 202608, 202607, 202606, 202605',
       fotoRumahFotoke: '2',
       fotoMeterFotoke: 'null',
-      imageSourceMode: 'direct', // 'direct' = Browser langsung buka link ACMT; 'proxy' = Lewat server
+      imageSourceMode: 'direct', // 'direct' = Browser langsung (bebas IP US), 'proxy' = Lewat server
       simulatedMode: false,
       concurrencyLimit: 5,
     });
@@ -26,6 +28,39 @@ createApp({
     const rawPasteInput = ref('');
     const items = ref([]);
     const focusedRowIndex = ref(0);
+
+    // Reactive Tracking for Images
+    const imageErrors = reactive({});
+    const renderVersion = ref(1);
+
+    function getImgKey(idpel, blth, type = 'meter') {
+      return `${idpel}_${blth}_${type}`;
+    }
+
+    function onImageError(idpel, blth, type = 'meter') {
+      imageErrors[getImgKey(idpel, blth, type)] = true;
+    }
+
+    function onImageSuccess(idpel, blth, type = 'meter') {
+      delete imageErrors[getImgKey(idpel, blth, type)];
+    }
+
+    function retryImage(idpel, blth, type = 'meter') {
+      delete imageErrors[getImgKey(idpel, blth, type)];
+      renderVersion.value++;
+    }
+
+    function retryAllImages() {
+      // Clear all tracked error states
+      Object.keys(imageErrors).forEach((key) => {
+        delete imageErrors[key];
+      });
+      renderVersion.value++;
+
+      if (config.imageSourceMode === 'proxy') {
+        triggerBatchPrefetch(true);
+      }
+    }
 
     // Pagination
     const currentPage = ref(1);
@@ -97,6 +132,12 @@ createApp({
       return Math.round((batchStatus.processed / batchStatus.total) * 100);
     });
 
+    // Bookmarklet Code snippet
+    const bookmarkletCode = computed(() => {
+      const origin = window.location.origin || 'https://web-production-6ff77.up.railway.app';
+      return `javascript:(function(){var c=document.cookie;if(!c){alert('Tidak ada cookie yang terdeteksi. Pastikan login di portalapp.iconpln.co.id');return;}fetch('${origin}/api/sync-session',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({cookie:c})}).then(function(r){return r.json();}).then(function(d){alert('✅ Sesi ACMT Berhasil Disinkronkan ke METRIK!\\nSilakan kembali ke tab METRIK dan klik Tarik Foto.');}).catch(function(e){alert('Gagal menyinkronkan: '+e);});})();`;
+    });
+
     // Helpers
     function formatMonthHeader(blth) {
       if (!blth || blth.length < 6) return blth;
@@ -116,16 +157,13 @@ createApp({
     function getPhotoUrl(idpel, blth, type = 'meter') {
       if (!idpel || !blth) return '';
       if (config.simulatedMode) {
-        return `/api/photo?idpel=${encodeURIComponent(idpel)}&blth=${encodeURIComponent(blth)}&type=${encodeURIComponent(type)}`;
+        return `/api/photo?idpel=${encodeURIComponent(idpel)}&blth=${encodeURIComponent(blth)}&type=${encodeURIComponent(type)}&v=${renderVersion.value}`;
       }
       if (config.imageSourceMode === 'direct') {
+        // Return pure exact ACMT URL without modifying parameters
         return getDirectAcmtUrl(idpel, blth, type);
       }
-      return `/api/photo?idpel=${encodeURIComponent(idpel)}&blth=${encodeURIComponent(blth)}&type=${encodeURIComponent(type)}`;
-    }
-
-    function handleImageError(event) {
-      event.target.src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="160" height="200" viewBox="0 0 160 200" fill="#f8fafc"><rect width="100%" height="100%" fill="#f1f5f9" stroke="#cbd5e1" stroke-width="1.5" rx="6"/><text x="80" y="95" text-anchor="middle" fill="#94a3b8" font-family="system-ui" font-size="11" font-weight="700">TIDAK ADA</text><text x="80" y="112" text-anchor="middle" fill="#94a3b8" font-family="system-ui" font-size="11" font-weight="700">FOTO</text></svg>';
+      return `/api/photo?idpel=${encodeURIComponent(idpel)}&blth=${encodeURIComponent(blth)}&type=${encodeURIComponent(type)}&v=${renderVersion.value}`;
     }
 
     function openDirectUrl(idpel, blth, type = 'meter') {
@@ -203,23 +241,36 @@ createApp({
         items.value = parsed;
         currentPage.value = 1;
         rawPasteInput.value = '';
-        triggerBatchPrefetch();
+        retryAllImages();
       } else {
         alert('Tidak ada baris IDPEL valid yang terdeteksi dari data yang di-paste.');
       }
     }
 
-    // Trigger batch photo download in background
-    async function triggerBatchPrefetch() {
+    function handleTarikFotoClick() {
+      if (rawPasteInput.value.trim()) {
+        parseAndLoadInput();
+      } else if (items.value.length > 0) {
+        retryAllImages();
+        alert('Sedang menarik ulang foto untuk semua IDPEL dalam antrean...');
+      }
+    }
+
+    // Trigger batch photo download in background (Proxy mode only)
+    async function triggerBatchPrefetch(forceRefresh = false) {
+      if (config.imageSourceMode !== 'proxy') return;
+
       const idpelList = items.value.map((i) => i.idpel);
+      if (idpelList.length === 0) return;
+
       try {
         const res = await fetch('/api/batch-prefetch', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             idpels: idpelList,
-            blthList: config.targetMonths,
-            forceRefresh: false,
+            months: config.targetMonths,
+            forceRefresh,
           }),
         });
         const data = await res.json();
@@ -227,7 +278,7 @@ createApp({
           startBatchPolling();
         }
       } catch (err) {
-        console.error('Error starting batch prefetch:', err);
+        console.error('Batch prefetch trigger error:', err);
       }
     }
 
@@ -236,10 +287,11 @@ createApp({
       batchPollInterval = setInterval(async () => {
         try {
           const res = await fetch('/api/batch-status');
-          const data = await res.json();
-          Object.assign(batchStatus, data);
-          if (!data.isRunning) {
+          const status = await res.json();
+          Object.assign(batchStatus, status);
+          if (!status.isRunning) {
             clearInterval(batchPollInterval);
+            batchPollInterval = null;
           }
         } catch (e) {
           clearInterval(batchPollInterval);
@@ -248,46 +300,27 @@ createApp({
     }
 
     async function cancelBatch() {
-      await fetch('/api/batch-cancel', { method: 'POST' });
-      batchStatus.isRunning = false;
-      if (batchPollInterval) clearInterval(batchPollInterval);
+      try {
+        await fetch('/api/batch-cancel', { method: 'POST' });
+        batchStatus.isRunning = false;
+        if (batchPollInterval) clearInterval(batchPollInterval);
+      } catch (e) {
+        console.error(e);
+      }
     }
 
-    // Audit Decisions
-    function setAuditDecision(item, status, idx) {
-      if (!item) return;
-      if (item.status === status) {
-        item.status = 'pending';
-      } else {
-        item.status = status;
-        if (status === 'salah') {
-          // focus catatan input
-          nextTick(() => {
-            const input = document.querySelector(`textarea[ref="catatan_${idx}"]`);
-            if (input) input.focus();
-          });
-        }
+    // Audit Decision Actions
+    function setAuditDecision(item, status, index) {
+      item.status = status;
+      // Auto move focus to next row
+      if (index < paginatedItems.value.length - 1) {
+        focusedRowIndex.value = index + 1;
       }
     }
 
     // Keyboard Shortcuts
     function handleKeyDown(e) {
-      if (['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)) {
-        return;
-      }
-
-      if (lightbox.show) {
-        if (e.key === 'Escape') closeLightbox();
-        if (e.key === '1') {
-          setAuditDecision(lightbox.item, 'sesuai');
-          closeLightbox();
-        }
-        if (e.key === '2') {
-          setAuditDecision(lightbox.item, 'salah');
-          closeLightbox();
-        }
-        return;
-      }
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
 
       const currentList = paginatedItems.value;
       if (currentList.length === 0) return;
@@ -296,9 +329,6 @@ createApp({
         const item = currentList[focusedRowIndex.value];
         if (item) {
           setAuditDecision(item, 'sesuai', focusedRowIndex.value);
-          if (focusedRowIndex.value < currentList.length - 1) {
-            focusedRowIndex.value++;
-          }
         }
       } else if (e.key === '2') {
         const item = currentList[focusedRowIndex.value];
@@ -386,6 +416,7 @@ createApp({
         items.value = [];
         currentPage.value = 1;
         rawPasteInput.value = '';
+        Object.keys(imageErrors).forEach((k) => delete imageErrors[k]);
       }
     }
 
@@ -394,7 +425,7 @@ createApp({
         const res = await fetch('/api/clear-empty-cache', { method: 'POST' });
         const data = await res.json();
         alert(data.message || 'Cache kosong berhasil dibersihkan.');
-        triggerBatchPrefetch();
+        retryAllImages();
       } catch (err) {
         alert('Error: ' + err.message);
       }
@@ -418,6 +449,7 @@ createApp({
           items.value = data.records;
           activeTab.value = 'audit';
           currentPage.value = 1;
+          retryAllImages();
         }
       } catch (err) {
         alert('Gagal membuka sesi: ' + err.message);
@@ -433,7 +465,19 @@ createApp({
       try {
         const res = await fetch('/api/config');
         const data = await res.json();
-        Object.assign(config, data);
+        if (data) {
+          // Preserve direct mode unless server explicitly configured
+          if (data.imageSourceMode) {
+            config.imageSourceMode = data.imageSourceMode;
+          }
+          if (data.targetMonths && Array.isArray(data.targetMonths)) {
+            config.targetMonths = data.targetMonths;
+            config.targetMonthsText = data.targetMonths.join(', ');
+          }
+          config.hasCookie = data.hasCookie;
+          config.acmtCookie = data.acmtCookie || '';
+          config.simulatedMode = !!data.simulatedMode;
+        }
       } catch (err) {
         console.error('Error loading config:', err);
       }
@@ -441,6 +485,13 @@ createApp({
 
     async function saveServerConfig() {
       try {
+        if (config.targetMonthsText) {
+          config.targetMonths = config.targetMonthsText
+            .split(',')
+            .map((s) => s.trim())
+            .filter(Boolean);
+        }
+
         const res = await fetch('/api/config', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -450,6 +501,7 @@ createApp({
         if (data.success) {
           alert('Pengaturan berhasil disimpan!');
           showConfigModal.value = false;
+          retryAllImages();
         }
       } catch (err) {
         alert('Gagal menyimpan pengaturan: ' + err.message);
@@ -480,7 +532,7 @@ createApp({
       items.value = samples;
       currentPage.value = 1;
       nextTick(() => lucide.createIcons());
-      triggerBatchPrefetch();
+      retryAllImages();
     }
 
     onMounted(() => {
@@ -497,6 +549,8 @@ createApp({
       auditorUnit,
       showConfigModal,
       showResetModal,
+      showBookmarkletModal,
+      showHelpModal,
       config,
       rawPasteInput,
       items,
@@ -510,6 +564,15 @@ createApp({
       pageAuditedCount,
       batchStatus,
       batchProgressPercent,
+      bookmarkletCode,
+      imageErrors,
+      renderVersion,
+      getImgKey,
+      onImageError,
+      onImageSuccess,
+      retryImage,
+      retryAllImages,
+      handleTarikFotoClick,
       lightbox,
       lightboxZoom,
       lightboxRotate,
@@ -518,7 +581,6 @@ createApp({
       getPhotoUrl,
       getDirectAcmtUrl,
       openDirectUrl,
-      handleImageError,
       copyToClipboard,
       parseAndLoadInput,
       cancelBatch,

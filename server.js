@@ -25,6 +25,7 @@ const DEFAULT_CONFIG = {
   targetMonths: ['202610', '202609', '202608', '202607', '202606', '202605'],
   fotoRumahFotoke: '2',
   fotoMeterFotoke: 'null',
+  imageSourceMode: 'direct',
   simulatedMode: false,
   concurrencyLimit: 5,
 };
@@ -49,24 +50,24 @@ app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
-// Serve static files from 'public' and root directory (in case files were uploaded to root)
-app.use(express.static(path.join(__dirname, 'public')));
+// Serve static files from root directory first, with 'public' as fallback
 app.use(express.static(__dirname));
+app.use(express.static(path.join(__dirname, 'public')));
 
 // Explicit route for root to guarantee index.html is loaded
 app.get('/', (req, res) => {
-  const publicIndex = path.join(__dirname, 'public', 'index.html');
   const rootIndex = path.join(__dirname, 'index.html');
-  if (fs.existsSync(publicIndex)) {
-    return res.sendFile(publicIndex);
-  }
+  const publicIndex = path.join(__dirname, 'public', 'index.html');
   if (fs.existsSync(rootIndex)) {
     return res.sendFile(rootIndex);
+  }
+  if (fs.existsSync(publicIndex)) {
+    return res.sendFile(publicIndex);
   }
   res.status(404).send(`<h3>Berkas index.html belum terunggah di GitHub</h3><p>Daftar berkas di server: ${fs.readdirSync(__dirname).join(', ')}</p>`);
 });
 
-// Placeholder SVG for "TIDAK ADA FOTO"
+// Placeholder SVGs for specific photo states
 const PLACEHOLDER_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="160" height="200" viewBox="0 0 160 200" fill="#f8fafc">
   <rect width="100%" height="100%" fill="#f1f5f9" stroke="#cbd5e1" stroke-width="1.5" rx="6"/>
   <rect x="25" y="45" width="110" height="90" rx="6" fill="#e2e8f0" stroke="#94a3b8" stroke-dasharray="3,3"/>
@@ -74,6 +75,24 @@ const PLACEHOLDER_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="160" hei
   <circle cx="70" cy="72" r="6" fill="#94a3b8"/>
   <text x="80" y="155" text-anchor="middle" fill="#64748b" font-family="system-ui, sans-serif" font-size="11" font-weight="700" letter-spacing="0.5">TIDAK ADA</text>
   <text x="80" y="170" text-anchor="middle" fill="#64748b" font-family="system-ui, sans-serif" font-size="11" font-weight="700" letter-spacing="0.5">FOTO</text>
+</svg>`;
+
+const AUTH_NEEDED_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="160" height="200" viewBox="0 0 160 200" fill="#fffbeb">
+  <rect width="100%" height="100%" fill="#fffbeb" stroke="#fcd34d" stroke-width="1.5" rx="6"/>
+  <circle cx="80" cy="75" r="28" fill="#fef3c7" stroke="#f59e0b" stroke-width="2"/>
+  <text x="80" y="85" text-anchor="middle" font-size="26">🔒</text>
+  <text x="80" y="135" text-anchor="middle" fill="#b45309" font-family="system-ui, sans-serif" font-size="11" font-weight="700">PERLU LOGIN</text>
+  <text x="80" y="152" text-anchor="middle" fill="#b45309" font-family="system-ui, sans-serif" font-size="11" font-weight="700">ACMT PLN</text>
+  <text x="80" y="172" text-anchor="middle" fill="#92400e" font-family="system-ui, sans-serif" font-size="9">(Klik Link Tab Baru)</text>
+</svg>`;
+
+const TIMEOUT_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="160" height="200" viewBox="0 0 160 200" fill="#fef2f2">
+  <rect width="100%" height="100%" fill="#fef2f2" stroke="#fca5a5" stroke-width="1.5" rx="6"/>
+  <circle cx="80" cy="75" r="28" fill="#fee2e2" stroke="#ef4444" stroke-width="2"/>
+  <text x="80" y="85" text-anchor="middle" font-size="26">⚠️</text>
+  <text x="80" y="135" text-anchor="middle" fill="#b91c1c" font-family="system-ui, sans-serif" font-size="11" font-weight="700">KONEKSI TIMEOUT</text>
+  <text x="80" y="152" text-anchor="middle" fill="#b91c1c" font-family="system-ui, sans-serif" font-size="10">KE ACMT</text>
+  <text x="80" y="172" text-anchor="middle" fill="#7f1d1d" font-family="system-ui, sans-serif" font-size="9">(Coba Mode Browser)</text>
 </svg>`;
 
 // Helper: generate realistic demo SVG image for testing/simulation
@@ -127,7 +146,7 @@ async function getOrFetchPhoto(idpel, blth, type = 'meter', forceRefresh = false
   }
 
   // 3. Simulated Demo Mode
-  if (config.simulatedMode || (!config.acmtCookie && !process.env.LIVE_FETCH)) {
+  if (config.simulatedMode) {
     return { kind: 'svg', content: generateDemoImage(safeIdpel, safeBlth, safeType), status: 'simulated' };
   }
 
@@ -154,22 +173,33 @@ async function getOrFetchPhoto(idpel, blth, type = 'meter', forceRefresh = false
       headers['Cookie'] = config.acmtCookie;
     }
 
-    const response = await fetch(url.toString(), { method: 'GET', headers });
+    const response = await fetch(url.toString(), { 
+      method: 'GET', 
+      headers,
+      signal: AbortSignal.timeout(10000) 
+    });
 
     if (!response.ok) {
-      fs.writeFileSync(emptyMarkerPath, 'EMPTY', 'utf-8');
-      return { kind: 'svg', content: PLACEHOLDER_SVG, status: 'empty-not-ok' };
+      // Do not write permanent empty marker on server HTTP errors (403, 500, etc)
+      return { kind: 'svg', content: AUTH_NEEDED_SVG, status: `http-${response.status}` };
     }
 
     const contentType = response.headers.get('content-type') || '';
     const arrayBuffer = await response.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
-    if (contentType.includes('text/html') || buffer.length < 200) {
-      fs.writeFileSync(emptyMarkerPath, 'EMPTY', 'utf-8');
-      return { kind: 'svg', content: PLACEHOLDER_SVG, status: 'empty-html' };
+    // If redirected to login HTML page because unauthenticated
+    if (contentType.includes('text/html') || buffer.slice(0, 100).toString().includes('<html')) {
+      return { kind: 'svg', content: AUTH_NEEDED_SVG, status: 'need-auth' };
     }
 
+    // Truly empty or tiny response (no photo in ACMT database)
+    if (buffer.length < 200) {
+      fs.writeFileSync(emptyMarkerPath, 'EMPTY', 'utf-8');
+      return { kind: 'svg', content: PLACEHOLDER_SVG, status: 'empty-blob' };
+    }
+
+    // Valid photo fetched!
     fs.writeFileSync(cacheFilePath, buffer);
     return {
       kind: 'buffer',
@@ -178,8 +208,8 @@ async function getOrFetchPhoto(idpel, blth, type = 'meter', forceRefresh = false
       status: 'fetched-live',
     };
   } catch (error) {
-    fs.writeFileSync(emptyMarkerPath, 'ERROR', 'utf-8');
-    return { kind: 'svg', content: PLACEHOLDER_SVG, status: 'error' };
+    // Network / timeout error - DO NOT write empty marker!
+    return { kind: 'svg', content: TIMEOUT_SVG, status: 'error: ' + error.message };
   }
 }
 
@@ -202,6 +232,24 @@ app.post('/api/config', (req, res) => {
     const updated = { ...current, ...req.body };
     saveConfig(updated);
     res.json({ success: true, message: 'Konfigurasi berhasil disimpan' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 1b. Direct Bookmarklet Session Synchronizer (1-Click)
+app.post('/api/sync-session', (req, res) => {
+  try {
+    const { cookie } = req.body;
+    if (!cookie) {
+      return res.status(400).json({ error: 'Cookie tidak boleh kosong' });
+    }
+    const current = getConfig();
+    current.acmtCookie = cookie;
+    current.imageSourceMode = 'proxy'; // Auto-enable proxy when session cookie synced
+    saveConfig(current);
+    console.log('[SESSION SYNC] ACMT Cookie synced successfully from browser bookmarklet');
+    res.json({ success: true, message: 'Cookie sesi ACMT berhasil disinkronkan!' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -404,6 +452,40 @@ app.post('/api/audit/save', (req, res) => {
 // Health check endpoint for Railway / Cloud uptime monitors
 app.get('/health', (req, res) => {
   res.status(200).send('OK');
+});
+
+// Diagnostic endpoint to test live ACMT fetch response
+app.get('/api/test-fetch', async (req, res) => {
+  const { idpel = '124150382150', blth = '202610' } = req.query;
+  const config = getConfig();
+  try {
+    const url = `${config.acmtBaseUrl}?idpel=${idpel}&nomor_meter=null&fotoke=null&blth=${blth}&isPhoto=null`;
+    const startTime = Date.now();
+    const headers = {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'Referer': 'https://portalapp.iconpln.co.id/acmt/Main.html',
+    };
+    if (config.acmtCookie) headers['Cookie'] = config.acmtCookie;
+
+    const response = await fetch(url, { headers, signal: AbortSignal.timeout(10000) });
+    const timeTaken = Date.now() - startTime;
+    const contentType = response.headers.get('content-type') || '';
+    const buffer = await response.arrayBuffer();
+
+    res.json({
+      success: response.ok,
+      status: response.status,
+      statusText: response.statusText,
+      contentType,
+      sizeBytes: buffer.byteLength,
+      timeTakenMs: timeTaken,
+      isImage: contentType.includes('image'),
+      isHtml: contentType.includes('text/html'),
+      previewSnippet: contentType.includes('text') ? Buffer.from(buffer).toString('utf-8').slice(0, 300) : null,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message, name: err.name });
+  }
 });
 
 // Start Server - Bind to 0.0.0.0 for Railway / Container compatibility
