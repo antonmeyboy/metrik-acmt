@@ -205,6 +205,31 @@ createApp({
       const lines = text.split(/\r?\n/).filter((l) => l.trim().length > 0);
       const parsed = [];
 
+      // If there's only 1 line, check if multiple IDPELs separated by space, comma, semicolon
+      if (lines.length === 1 && !lines[0].includes('\t')) {
+        const tokens = lines[0].split(/[\s,;]+/).map(t => t.replace(/\D/g, '').trim()).filter(t => t.length >= 8);
+        if (tokens.length > 1) {
+          tokens.forEach((id, i) => {
+            parsed.push({
+              no: String(i + 1),
+              unit: '-',
+              idpel: id,
+              nama: '-',
+              kddk: '-',
+              petugas: '-',
+              lwbppakai: '-',
+              status: 'pending',
+              catatan: '',
+            });
+          });
+          items.value = parsed;
+          currentPage.value = 1;
+          rawPasteInput.value = '';
+          retryAllImages();
+          return;
+        }
+      }
+
       lines.forEach((line, index) => {
         const cols = line.split('\t');
 
@@ -240,26 +265,34 @@ createApp({
             catatan: '',
           });
         } else {
-          // Just raw IDPEL or single column
-          const rawId = line.replace(/\D/g, '').trim();
-          if (rawId.length >= 8) {
-            parsed.push({
-              no: String(parsed.length + 1),
-              unit: '-',
-              idpel: rawId,
-              nama: '-',
-              kddk: '-',
-              petugas: '-',
-              lwbppakai: '-',
-              status: 'pending',
-              catatan: '',
+          // Multiple or single IDPEL
+          const tokens = line.split(/[\s,;]+/).map(t => t.replace(/\D/g, '').trim()).filter(t => t.length >= 8);
+          if (tokens.length > 0) {
+            tokens.forEach(id => {
+              parsed.push({
+                no: String(parsed.length + 1),
+                unit: '-',
+                idpel: id,
+                nama: '-',
+                kddk: '-',
+                petugas: '-',
+                lwbppakai: '-',
+                status: 'pending',
+                catatan: '',
+              });
             });
           }
         }
       });
 
       if (parsed.length > 0) {
-        items.value = parsed;
+        const existingIds = new Set(items.value.map(i => i.idpel));
+        const newItems = parsed.filter(p => !existingIds.has(p.idpel));
+        if (newItems.length > 0) {
+          const startNo = items.value.length;
+          newItems.forEach((item, idx) => { item.no = String(startNo + idx + 1); });
+          items.value = [...items.value, ...newItems];
+        }
         currentPage.value = 1;
         rawPasteInput.value = '';
         retryAllImages();
