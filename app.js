@@ -14,8 +14,10 @@ createApp({
       acmtCookie: '',
       hasCookie: false,
       targetMonths: ['202610', '202609', '202608', '202607', '202606', '202605'],
+      targetMonthsText: '202610, 202609, 202608, 202607, 202606, 202605',
       fotoRumahFotoke: '2',
       fotoMeterFotoke: 'null',
+      imageSourceMode: 'direct', // 'direct' = Browser langsung buka link ACMT; 'proxy' = Lewat server
       simulatedMode: false,
       concurrencyLimit: 5,
     });
@@ -104,13 +106,31 @@ createApp({
       return `${months[monthNum - 1] || ''} ${year}`;
     }
 
+    function getDirectAcmtUrl(idpel, blth, type = 'meter') {
+      if (!idpel || !blth) return '#';
+      const fotokeVal = type === 'rumah' ? (config.fotoRumahFotoke || '2') : (config.fotoMeterFotoke || 'null');
+      const baseUrl = config.acmtBaseUrl || 'https://portalapp.iconpln.co.id/acmt/DisplayBlobServlet1';
+      return `${baseUrl}?idpel=${encodeURIComponent(idpel)}&nomor_meter=null&fotoke=${fotokeVal}&blth=${encodeURIComponent(blth)}&isPhoto=null`;
+    }
+
     function getPhotoUrl(idpel, blth, type = 'meter') {
       if (!idpel || !blth) return '';
+      if (config.simulatedMode) {
+        return `/api/photo?idpel=${encodeURIComponent(idpel)}&blth=${encodeURIComponent(blth)}&type=${encodeURIComponent(type)}`;
+      }
+      if (config.imageSourceMode === 'direct') {
+        return getDirectAcmtUrl(idpel, blth, type);
+      }
       return `/api/photo?idpel=${encodeURIComponent(idpel)}&blth=${encodeURIComponent(blth)}&type=${encodeURIComponent(type)}`;
     }
 
     function handleImageError(event) {
-      event.target.src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="160" height="200" fill="#f1f5f9"><rect width="100%" height="100%" fill="#f1f5f9"/><text x="80" y="100" text-anchor="middle" fill="#94a3b8" font-size="12">TIDAK ADA FOTO</text></svg>';
+      event.target.src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="160" height="200" viewBox="0 0 160 200" fill="#f8fafc"><rect width="100%" height="100%" fill="#f1f5f9" stroke="#cbd5e1" stroke-width="1.5" rx="6"/><text x="80" y="95" text-anchor="middle" fill="#94a3b8" font-family="system-ui" font-size="11" font-weight="700">TIDAK ADA</text><text x="80" y="112" text-anchor="middle" fill="#94a3b8" font-family="system-ui" font-size="11" font-weight="700">FOTO</text></svg>';
+    }
+
+    function openDirectUrl(idpel, blth, type = 'meter') {
+      const url = getDirectAcmtUrl(idpel, blth, type);
+      window.open(url, '_blank');
     }
 
     function copyToClipboard(text) {
@@ -496,6 +516,8 @@ createApp({
       historySessions,
       formatMonthHeader,
       getPhotoUrl,
+      getDirectAcmtUrl,
+      openDirectUrl,
       handleImageError,
       copyToClipboard,
       parseAndLoadInput,
