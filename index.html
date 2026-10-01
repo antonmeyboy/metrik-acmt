@@ -12,7 +12,9 @@
   <!-- Lucide Icons -->
   <script src="https://unpkg.com/lucide@latest"></script>
   <style>
-    [v-cloak] { display: none; }
+    [v-cloak], [v-cloak] * { 
+      display: none !important; 
+    }
     /* Custom Scrollbar */
     ::-webkit-scrollbar {
       width: 6px;
@@ -887,7 +889,7 @@
     </div>
 
     <!-- Modal: Lightbox Zoom & Rotate Foto Meter -->
-    <div v-if="lightbox.show" class="fixed inset-0 bg-black/90 backdrop-blur-sm flex flex-col z-50 p-4">
+    <div v-if="lightbox.show" v-cloak class="fixed inset-0 bg-black/90 backdrop-blur-sm flex flex-col z-50 p-4">
       <!-- Lightbox Header -->
       <div class="flex items-center justify-between text-white pb-3 border-b border-white/10">
         <div class="flex items-center space-x-4">
