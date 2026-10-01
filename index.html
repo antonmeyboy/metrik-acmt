@@ -455,15 +455,22 @@
                         :src="getPhotoUrl(item.idpel, month, 'meter')" 
                         :alt="month" 
                         loading="lazy"
-                        referrerpolicy="no-referrer"
                         class="w-full h-full object-cover thumb-img cursor-pointer"
                         @click="openLightbox(item, month, 'meter')"
                         @error="onImageError(item.idpel, month, 'meter')"
                         @load="onImageSuccess(item.idpel, month, 'meter')" />
                       
+                      <!-- Loading Spinner Indicator while fetching from ACMT -->
+                      <div 
+                        v-if="imageLoading[getImgKey(item.idpel, month, 'meter')] && !imageErrors[getImgKey(item.idpel, month, 'meter')]"
+                        class="absolute inset-0 bg-slate-100/90 flex flex-col items-center justify-center p-1 z-10 pointer-events-none">
+                        <div class="w-3.5 h-3.5 border-2 border-sky-500 border-t-transparent rounded-full animate-spin mb-1"></div>
+                        <span class="text-[7.5px] text-slate-500 font-bold">Memuat...</span>
+                      </div>
+                      
                       <!-- Fallback Interactive Card if Failed -->
                       <div 
-                        v-else 
+                        v-else-if="imageErrors[getImgKey(item.idpel, month, 'meter')]" 
                         class="w-full h-full flex flex-col items-center justify-center p-1 bg-slate-50 text-[9px] text-slate-500 leading-tight">
                         <i data-lucide="image-off" class="w-4 h-4 text-slate-400 mb-0.5"></i>
                         <span class="font-bold text-[8px] text-slate-600">Gagal Muat</span>
@@ -510,15 +517,22 @@
                         :src="getPhotoUrl(item.idpel, config.targetMonths[0], 'rumah')" 
                         alt="Foto Rumah" 
                         loading="lazy"
-                        referrerpolicy="no-referrer"
                         class="w-full h-full object-cover thumb-img cursor-pointer"
                         @click="openLightbox(item, config.targetMonths[0], 'rumah')"
                         @error="onImageError(item.idpel, config.targetMonths[0], 'rumah')"
                         @load="onImageSuccess(item.idpel, config.targetMonths[0], 'rumah')" />
 
+                      <!-- Loading Spinner for Rumah -->
+                      <div 
+                        v-if="imageLoading[getImgKey(item.idpel, config.targetMonths[0], 'rumah')] && !imageErrors[getImgKey(item.idpel, config.targetMonths[0], 'rumah')]"
+                        class="absolute inset-0 bg-emerald-50/90 flex flex-col items-center justify-center p-1 z-10 pointer-events-none">
+                        <div class="w-3.5 h-3.5 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin mb-1"></div>
+                        <span class="text-[7.5px] text-emerald-700 font-bold">Memuat...</span>
+                      </div>
+
                       <!-- Fallback Interactive Card if Failed -->
                       <div 
-                        v-else 
+                        v-else-if="imageErrors[getImgKey(item.idpel, config.targetMonths[0], 'rumah')]" 
                         class="w-full h-full flex flex-col items-center justify-center p-1 bg-emerald-50/40 text-[9px] text-slate-500 leading-tight">
                         <i data-lucide="home" class="w-4 h-4 text-emerald-500 mb-0.5"></i>
                         <span class="font-bold text-[8px] text-slate-600">Gagal Muat</span>
@@ -655,7 +669,7 @@
 
     </main>
 
-    <!-- Modal: Sinkron Sesi ACMT (1-Klik Bookmarklet) -->
+    <!-- Modal: Buka METRIK di Tab ACMT (1-Klik Bookmarklet) -->
     <div v-if="showBookmarkletModal" class="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
       <div class="bg-white rounded-2xl shadow-2xl max-w-lg w-full p-6 space-y-4">
         <div class="flex items-center justify-between pb-3 border-b border-slate-100">
@@ -664,8 +678,8 @@
               <i data-lucide="zap" class="w-4 h-4"></i>
             </div>
             <div>
-              <h3 class="text-sm font-bold text-slate-800">Sinkronkan Sesi ACMT (1-Klik)</h3>
-              <p class="text-[11px] text-slate-500">Hubungkan sesi login ACMT Anda ke server Railway secara otomatis.</p>
+              <h3 class="text-sm font-bold text-slate-800">Buka METRIK di Tab ACMT (1-Klik)</h3>
+              <p class="text-[11px] text-slate-500">Tarik foto langsung di tab ACMT tanpa pusing salin cookie!</p>
             </div>
           </div>
           <button @click="showBookmarkletModal = false" class="text-slate-400 hover:text-slate-600 text-lg font-bold">&times;</button>
@@ -673,7 +687,7 @@
 
         <div class="space-y-3 text-xs text-slate-700">
           <div class="p-3.5 bg-amber-50 rounded-xl border border-amber-200 space-y-2.5">
-            <p class="font-bold text-amber-900">Cara Menghubungkan Sesi Login ACMT:</p>
+            <p class="font-bold text-amber-900">Cara Pakai (Cukup 1-Klik):</p>
             <ol class="list-decimal list-inside space-y-2 leading-relaxed text-slate-800 text-[11px]">
               <li>
                 <strong>Tarik (Drag) tombol biru di bawah ini</strong> ke bilah <em>Bookmark / Favorit</em> browser Anda (tekan <kbd class="bg-white px-1.5 py-0.5 border rounded font-mono font-semibold">Ctrl + Shift + B</kbd> jika bilah bookmark belum tampil):
@@ -682,18 +696,14 @@
                     :href="bookmarkletCode" 
                     onclick="alert('Jangan klik di sini! Tarik (drag & drop) tombol ini ke baris Bookmark browser Anda.'); return false;"
                     class="inline-block px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-black rounded-lg shadow-md cursor-grab active:cursor-grabbing text-xs border border-blue-400 tracking-wide">
-                    ⚡ Sinkron Sesi ACMT
+                    ⚡ Buka METRIK di Tab ACMT
                   </a>
                 </div>
               </li>
               <li>Buka tab website <strong>portalapp.iconpln.co.id/acmt</strong> yang sudah Anda login.</li>
-              <li>Saat berada di tab ACMT tersebut, klik bookmark <strong>⚡ Sinkron Sesi ACMT</strong> yang baru saja Anda pasang.</li>
-              <li>Akan muncul popup sukses! Kembali ke aplikasi ini lalu klik <strong>Tarik Foto (ACMT)</strong>.</li>
+              <li>Saat berada di tab ACMT tersebut, klik bookmark <strong>⚡ Buka METRIK di Tab ACMT</strong> yang barusan Anda pasang.</li>
+              <li><strong>Selesai!</strong> Dashboard METRIK langsung muncul di tab ACMT. Paste daftar IDPEL Anda lalu klik <strong>Tarik Foto</strong>, semua foto langsung tampil di kotak!</li>
             </ol>
-          </div>
-
-          <div class="p-3 bg-slate-50 rounded-xl border border-slate-200 text-[11px] text-slate-600">
-            <strong>Alternatif:</strong> Anda juga bisa membuka tab baru ACMT dan tetap memilih mode <em>🌐 Langsung dari Browser</em>.
           </div>
         </div>
 
@@ -839,6 +849,29 @@
               <input type="checkbox" v-model="config.simulatedMode" class="sr-only peer">
               <div class="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-amber-500"></div>
             </label>
+          </div>
+
+          <!-- Uji Koneksi Server -->
+          <div class="pt-1 border-t border-slate-100">
+            <button 
+              type="button"
+              @click="testServerConnection" 
+              :disabled="isTestingConnection" 
+              class="w-full py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-lg text-xs font-bold border border-slate-300 flex items-center justify-center space-x-1.5 transition">
+              <i data-lucide="activity" class="w-3.5 h-3.5 text-blue-600"></i>
+              <span>{{ isTestingConnection ? 'Sedang Menguji Koneksi...' : '🔌 Uji Coba Tarik Foto ACMT dari Server' }}</span>
+            </button>
+            <div v-if="testResult" class="mt-2 p-2.5 rounded-lg text-xs leading-relaxed" :class="testResult.success && testResult.isImage ? 'bg-emerald-50 text-emerald-800 border border-emerald-300' : 'bg-rose-50 text-rose-800 border border-rose-300'">
+              <div v-if="testResult.isImage" class="font-bold">
+                ✅ BERHASIL! Server Railway berhasil menarik foto ACMT (Ukuran: {{ (testResult.sizeBytes / 1024).toFixed(1) }} KB). Silakan gunakan mode Server Proxy!
+              </div>
+              <div v-else-if="testResult.isHtml" class="font-bold">
+                ⚠️ Server terhubung tetapi ACMT meminta login (Cookie belum sesuai / expired). Silakan periksa kembali isi Cookie.
+              </div>
+              <div v-else class="font-bold">
+                ❌ Gagal: {{ testResult.error || testResult.statusText || 'Status ' + testResult.status }}
+              </div>
+            </div>
           </div>
         </div>
 
