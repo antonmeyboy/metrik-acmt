@@ -441,11 +441,36 @@
         function parseAndLoadInput() {
           const text = rawPasteInput.value.trim();
           if (!text) return;
-          const lines = text.split(/\\r?\\n/).filter(l => l.trim().length > 0);
+          const lines = text.split(/\r?\n/).filter(l => l.trim().length > 0);
           const parsed = [];
 
+          // If there's only 1 line, check if multiple IDPELs separated by space, comma, semicolon
+          if (lines.length === 1 && !lines[0].includes('\t')) {
+            const tokens = lines[0].split(/[\s,;]+/).map(t => t.replace(/\D/g, '').trim()).filter(t => t.length >= 8);
+            if (tokens.length > 1) {
+              tokens.forEach((id, i) => {
+                parsed.push({
+                  no: String(i + 1),
+                  unit: '-',
+                  idpel: id,
+                  nama: '-',
+                  kddk: '-',
+                  petugas: '-',
+                  lwbppakai: '-',
+                  status: 'pending',
+                  catatan: '',
+                });
+              });
+              items.value = parsed;
+              currentPage.value = 1;
+              rawPasteInput.value = '';
+              retryAllImages();
+              return;
+            }
+          }
+
           lines.forEach((line, index) => {
-            const cols = line.split('\\t');
+            const cols = line.split('\t');
             const firstCol = cols[0].trim().toUpperCase();
             if (firstCol === 'NO' || firstCol === 'IDPEL' || firstCol === 'UNIT') return;
 
@@ -453,7 +478,7 @@
               parsed.push({
                 no: cols[0].trim() || String(index + 1),
                 unit: cols[1].trim() || '-',
-                idpel: cols[2].replace(/\\D/g, '').trim(),
+                idpel: cols[2].replace(/\D/g, '').trim(),
                 nama: cols[3].trim() || '-',
                 kddk: cols[4].trim() || '-',
                 petugas: cols[5].trim() || '-',
@@ -461,11 +486,11 @@
                 status: 'pending',
                 catatan: '',
               });
-            } else if (cols.length >= 3 && cols[2].replace(/\\D/g, '').length >= 10) {
+            } else if (cols.length >= 3 && cols[2].replace(/\D/g, '').length >= 10) {
               parsed.push({
                 no: cols[0].trim() || String(index + 1),
                 unit: cols[1].trim() || '-',
-                idpel: cols[2].replace(/\\D/g, '').trim(),
+                idpel: cols[2].replace(/\D/g, '').trim(),
                 nama: cols[3]?.trim() || '-',
                 kddk: cols[4]?.trim() || '-',
                 petugas: cols[5]?.trim() || '-',
@@ -474,18 +499,20 @@
                 catatan: '',
               });
             } else {
-              const rawId = line.replace(/\\D/g, '').trim();
-              if (rawId.length >= 8) {
-                parsed.push({
-                  no: String(parsed.length + 1),
-                  unit: '-',
-                  idpel: rawId,
-                  nama: '-',
-                  kddk: '-',
-                  petugas: '-',
-                  lwbppakai: '-',
-                  status: 'pending',
-                  catatan: '',
+              const tokens = line.split(/[\s,;]+/).map(t => t.replace(/\D/g, '').trim()).filter(t => t.length >= 8);
+              if (tokens.length > 0) {
+                tokens.forEach(id => {
+                  parsed.push({
+                    no: String(parsed.length + 1),
+                    unit: '-',
+                    idpel: id,
+                    nama: '-',
+                    kddk: '-',
+                    petugas: '-',
+                    lwbppakai: '-',
+                    status: 'pending',
+                    catatan: '',
+                  });
                 });
               }
             }
