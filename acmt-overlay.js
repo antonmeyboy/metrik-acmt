@@ -1,8 +1,6 @@
 (function() {
   if (document.getElementById('metrik-overlay-container')) {
-    const existing = document.getElementById('metrik-overlay-container');
-    existing.style.display = existing.style.display === 'none' ? 'block' : 'none';
-    return;
+    document.getElementById('metrik-overlay-container').remove();
   }
 
   // Inject Overlay Container
