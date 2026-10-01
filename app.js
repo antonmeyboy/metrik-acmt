@@ -184,6 +184,14 @@ createApp({
       window.open(url, '_blank');
     }
 
+    function openAllPhotos(item) {
+      if (!item || !item.idpel) return;
+      config.targetMonths.forEach((m) => {
+        window.open(getDirectAcmtUrl(item.idpel, m, 'meter'), '_blank');
+      });
+      window.open(getDirectAcmtUrl(item.idpel, config.targetMonths[0], 'rumah'), '_blank');
+    }
+
     function copyToClipboard(text) {
       navigator.clipboard.writeText(text);
       alert(`IDPEL ${text} berhasil disalin!`);
@@ -628,6 +636,7 @@ createApp({
       getPhotoUrl,
       getDirectAcmtUrl,
       openDirectUrl,
+      openAllPhotos,
       copyToClipboard,
       parseAndLoadInput,
       cancelBatch,
