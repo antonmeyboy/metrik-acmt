@@ -48,7 +48,23 @@ function saveConfig(newConfig) {
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+
+// Serve static files from 'public' and root directory (in case files were uploaded to root)
 app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(__dirname));
+
+// Explicit route for root to guarantee index.html is loaded
+app.get('/', (req, res) => {
+  const publicIndex = path.join(__dirname, 'public', 'index.html');
+  const rootIndex = path.join(__dirname, 'index.html');
+  if (fs.existsSync(publicIndex)) {
+    return res.sendFile(publicIndex);
+  }
+  if (fs.existsSync(rootIndex)) {
+    return res.sendFile(rootIndex);
+  }
+  res.status(404).send(`<h3>Berkas index.html belum terunggah di GitHub</h3><p>Daftar berkas di server: ${fs.readdirSync(__dirname).join(', ')}</p>`);
+});
 
 // Placeholder SVG for "TIDAK ADA FOTO"
 const PLACEHOLDER_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="160" height="200" viewBox="0 0 160 200" fill="#f8fafc">
