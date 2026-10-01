@@ -160,6 +160,41 @@
             </div>
           </div>
 
+          <!-- Pagination & Controls Bar -->
+          <div class="flex flex-wrap items-center justify-between text-xs text-slate-700 bg-white border border-slate-200 rounded-xl px-4 py-2.5 shadow-sm">
+            <div class="flex items-center space-x-3">
+              <span>Menampilkan: <strong class="text-blue-700 font-mono">{{ items.length > 0 ? (currentPage - 1) * pageSize + 1 : 0 }} - {{ Math.min(currentPage * pageSize, items.length) }}</strong> dari <strong class="text-slate-900 font-mono">{{ items.length }}</strong> Pelanggan</span>
+              <span class="text-slate-300">|</span>
+              <label class="flex items-center space-x-1.5 font-semibold text-slate-600">
+                <span>Per Halaman:</span>
+                <select v-model.number="pageSize" @change="currentPage = 1" class="border border-slate-300 rounded-lg px-2.5 py-1 text-xs bg-slate-50 font-bold focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer">
+                  <option :value="50">50 Baris</option>
+                  <option :value="100">100 Baris</option>
+                  <option :value="300">300 Baris (Semua)</option>
+                  <option :value="1000">1.000 Baris (Semua)</option>
+                </select>
+              </label>
+            </div>
+
+            <div class="flex items-center space-x-2">
+              <button 
+                @click="currentPage = Math.max(1, currentPage - 1)" 
+                :disabled="currentPage === 1"
+                class="px-3 py-1.5 rounded-lg border border-slate-300 disabled:opacity-30 disabled:cursor-not-allowed hover:bg-slate-100 font-bold text-xs transition">
+                ◀ Prev
+              </button>
+              <span class="font-mono text-xs font-bold text-slate-800 bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200">
+                Hal {{ currentPage }} / {{ totalPages }}
+              </span>
+              <button 
+                @click="currentPage = Math.min(totalPages, currentPage + 1)" 
+                :disabled="currentPage >= totalPages"
+                class="px-3 py-1.5 rounded-lg border border-slate-300 disabled:opacity-30 disabled:cursor-not-allowed hover:bg-slate-100 font-bold text-xs transition">
+                Next ▶
+              </button>
+            </div>
+          </div>
+
           <!-- Table -->
           <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
             <div class="overflow-x-auto">
@@ -308,6 +343,26 @@
                   </tr>
                 </tbody>
               </table>
+            </div>
+
+            <!-- Table Footer Pagination -->
+            <div class="flex flex-wrap items-center justify-between px-4 py-2.5 bg-slate-50 border-t border-slate-200 text-xs">
+              <span class="text-slate-500">Total <strong class="text-slate-800 font-mono">{{ items.length }}</strong> IDPEL dalam antrean audit</span>
+              <div class="flex items-center space-x-2">
+                <button 
+                  @click="currentPage = Math.max(1, currentPage - 1)" 
+                  :disabled="currentPage === 1"
+                  class="px-3 py-1 rounded border border-slate-300 disabled:opacity-30 disabled:cursor-not-allowed hover:bg-white font-semibold text-xs">
+                  ◀ Sebelumnya
+                </button>
+                <span class="font-mono font-bold text-slate-700 bg-white px-2.5 py-1 rounded border border-slate-200">Hal {{ currentPage }} dari {{ totalPages }}</span>
+                <button 
+                  @click="currentPage = Math.min(totalPages, currentPage + 1)" 
+                  :disabled="currentPage >= totalPages"
+                  class="px-3 py-1 rounded border border-slate-300 disabled:opacity-30 disabled:cursor-not-allowed hover:bg-white font-semibold text-xs">
+                  Berikutnya ▶
+                </button>
+              </div>
             </div>
           </div>
         </main>
@@ -641,6 +696,10 @@
           return items.value.slice(start, start + pageSize.value);
         });
 
+        const totalPages = computed(() => {
+          return Math.max(1, Math.ceil(items.value.length / pageSize.value));
+        });
+
         window.addEventListener('keydown', handleKeyDown);
 
         return {
@@ -649,6 +708,7 @@
           focusedRowIndex,
           currentPage,
           pageSize,
+          totalPages,
           targetMonths,
           imageErrors,
           renderVersion,
