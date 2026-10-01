@@ -31,6 +31,7 @@ createApp({
 
     // Reactive Tracking for Images
     const imageErrors = reactive({});
+    const imageLoading = reactive({});
     const renderVersion = ref(1);
 
     function getImgKey(idpel, blth, type = 'meter') {
@@ -38,22 +39,34 @@ createApp({
     }
 
     function onImageError(idpel, blth, type = 'meter') {
-      imageErrors[getImgKey(idpel, blth, type)] = true;
+      const key = getImgKey(idpel, blth, type);
+      delete imageLoading[key];
+      imageErrors[key] = true;
     }
 
     function onImageSuccess(idpel, blth, type = 'meter') {
-      delete imageErrors[getImgKey(idpel, blth, type)];
+      const key = getImgKey(idpel, blth, type);
+      delete imageLoading[key];
+      delete imageErrors[key];
     }
 
     function retryImage(idpel, blth, type = 'meter') {
-      delete imageErrors[getImgKey(idpel, blth, type)];
+      const key = getImgKey(idpel, blth, type);
+      delete imageErrors[key];
+      imageLoading[key] = true;
       renderVersion.value++;
     }
 
     function retryAllImages() {
-      // Clear all tracked error states
+      // Clear all tracked error states and mark visible images as loading
       Object.keys(imageErrors).forEach((key) => {
         delete imageErrors[key];
+      });
+      paginatedItems.value.forEach((item) => {
+        config.targetMonths.forEach((m) => {
+          imageLoading[getImgKey(item.idpel, m, 'meter')] = true;
+        });
+        imageLoading[getImgKey(item.idpel, config.targetMonths[0], 'rumah')] = true;
       });
       renderVersion.value++;
 
@@ -132,10 +145,10 @@ createApp({
       return Math.round((batchStatus.processed / batchStatus.total) * 100);
     });
 
-    // Bookmarklet Code snippet
+    // Bookmarklet Code snippet - loads METRIK overlay directly into ACMT
     const bookmarkletCode = computed(() => {
       const origin = window.location.origin || 'https://web-production-6ff77.up.railway.app';
-      return `javascript:(function(){var c=document.cookie;if(!c){alert('Tidak ada cookie yang terdeteksi. Pastikan login di portalapp.iconpln.co.id');return;}fetch('${origin}/api/sync-session',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({cookie:c})}).then(function(r){return r.json();}).then(function(d){alert('✅ Sesi ACMT Berhasil Disinkronkan ke METRIK!\\nSilakan kembali ke tab METRIK dan klik Tarik Foto.');}).catch(function(e){alert('Gagal menyinkronkan: '+e);});})();`;
+      return `javascript:(function(){var s=document.createElement('script');s.src='${origin}/acmt-overlay.js?t='+Date.now();document.head.appendChild(s);})();`;
     });
 
     // Helpers
@@ -483,6 +496,33 @@ createApp({
       }
     }
 
+    const testResult = ref(null);
+    const isTestingConnection = ref(false);
+
+    async function testServerConnection() {
+      isTestingConnection.value = true;
+      testResult.value = null;
+      try {
+        const testIdpel = items.value[0]?.idpel || '124150382150';
+        const testMonth = config.targetMonths[0] || '202610';
+        const res = await fetch(`/api/test-fetch?idpel=${encodeURIComponent(testIdpel)}&blth=${encodeURIComponent(testMonth)}`);
+        const contentType = res.headers.get('content-type') || '';
+        if (!res.ok || !contentType.includes('application/json')) {
+          testResult.value = { 
+            success: false, 
+            error: 'Server belum memperbarui rute uji coba. Silakan klik tombol "Simpan Pengaturan" langsung di bawah.' 
+          };
+          return;
+        }
+        const data = await res.json();
+        testResult.value = data;
+      } catch (err) {
+        testResult.value = { success: false, error: err.message };
+      } finally {
+        isTestingConnection.value = false;
+      }
+    }
+
     async function saveServerConfig() {
       try {
         if (config.targetMonthsText) {
@@ -490,6 +530,12 @@ createApp({
             .split(',')
             .map((s) => s.trim())
             .filter(Boolean);
+        }
+
+        // Auto-switch to proxy mode when cookie is provided
+        if (config.acmtCookie && config.acmtCookie.trim()) {
+          config.imageSourceMode = 'proxy';
+          config.hasCookie = true;
         }
 
         const res = await fetch('/api/config', {
@@ -566,6 +612,7 @@ createApp({
       batchProgressPercent,
       bookmarkletCode,
       imageErrors,
+      imageLoading,
       renderVersion,
       getImgKey,
       onImageError,
@@ -595,6 +642,9 @@ createApp({
       loadSessionIntoQueue,
       exportSessionCSV,
       saveServerConfig,
+      testResult,
+      isTestingConnection,
+      testServerConnection,
       openWhatsAppModal,
       loadSampleData,
     };
