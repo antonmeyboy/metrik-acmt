@@ -459,7 +459,13 @@
                   catatan: '',
                 });
               });
-              items.value = parsed;
+              const existingIds = new Set(items.value.map(i => i.idpel));
+              const newItems = parsed.filter(p => !existingIds.has(p.idpel));
+              if (newItems.length > 0) {
+                const startNo = items.value.length;
+                newItems.forEach((item, idx) => { item.no = String(startNo + idx + 1); });
+                items.value = [...items.value, ...newItems];
+              }
               currentPage.value = 1;
               rawPasteInput.value = '';
               retryAllImages();
@@ -517,7 +523,13 @@
           });
 
           if (parsed.length > 0) {
-            items.value = parsed;
+            const existingIds = new Set(items.value.map(i => i.idpel));
+            const newItems = parsed.filter(p => !existingIds.has(p.idpel));
+            if (newItems.length > 0) {
+              const startNo = items.value.length;
+              newItems.forEach((item, idx) => { item.no = String(startNo + idx + 1); });
+              items.value = [...items.value, ...newItems];
+            }
             currentPage.value = 1;
             rawPasteInput.value = '';
             retryAllImages();
